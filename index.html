@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Undertale Survival - Score Mode</title>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        body {
+            background-color: #000;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            height: 100vh; margin: 0; color: white;
+            font-family: 'Press Start 2P', cursive;
+            overflow: hidden; user-select: none;
+        }
+        #game-board {
+            width: 450px; height: 280px;
+            border: 5px solid white; position: relative;
+            background-color: black; margin-bottom: 10px;
+        }
+        #soul {
+            width: 16px; height: 16px; position: absolute;
+            background-image: url('Player.png'); 
+            background-size: contain; background-repeat: no-repeat;
+            z-index: 100; transition: filter 0.3s;
+        }
+        .bone { width: 10px; background-color: white; position: absolute; bottom: 0; border-radius: 2px; z-index: 30; }
+        .blaster { 
+    width: 60px; 
+    height: 80px; 
+    position: absolute; 
+    background-image: url('GasterBlaster.png'); 
+    background-size: contain; 
+    background-repeat: no-repeat;
+    z-index: 50;
+    /* Esto asegura que rote sobre su propio eje */
+    transform-origin: center; 
+}
+        .beam { position: absolute; background-color: white; height: 18px; width: 800px; z-index: 40; box-shadow: 0 0 15px white; transform-origin: left center; }
+        
+        #ui-container { display: flex; align-items: center; font-size: 14px; gap: 20px; }
+        #hp-bar-max { width: 100px; height: 20px; background-color: #f00; }
+        #hp-bar-current { width: 100%; height: 100%; background-color: #ff0; transition: width 0.1s; }
+        #score-display { color: #0f0; margin-top: 10px; font-size: 18px; }
+        .damaged { filter: invert(1) brightness(2); }
+    </style>
+</head>
+<body>
+
+    <div id="score-display">SCORE: 00000</div>
+    <div id="game-board">
+        <div id="soul"></div>
+    </div>
+
+    <div id="ui-container">
+        <span>You</span>
+        <div id="hp-bar-max"><div id="hp-bar-current"></div></div>
+        <div id="hp-text">45 / 45</div>
+    </div>
+
+    <script>
+        const soul = document.getElementById('soul');
+        const board = document.getElementById('game-board');
+        const hpBar = document.getElementById('hp-bar-current');
+        const hpText = document.getElementById('hp-text');
+        const scoreDisplay = document.getElementById('score-display');
+
+        // Variables de Juego
+        let posX = 210, posY = 200, velY = 0;
+        let health = 45, score = 0;
+        const speed = 4, gravity = 0.35, jumpPower = -7.5;
+        const keys = {};
+        let bones = [], activeBeams = [], canTakeDamage = true;
+
+        // Iniciar en Magia Azul
+        soul.style.filter = "hue-rotate(245deg) brightness(1.5)";
+
+        window.addEventListener('keydown', (e) => keys[e.key] = true);
+        window.addEventListener('keyup', (e) => keys[e.key] = false);
+
+        // Sistema de Puntos: 10 puntos por segundo
+        setInterval(() => {
+            if (health > 0) {
+                score += 10;
+                scoreDisplay.innerText = `SCORE: ${score.toString().padStart(5, '0')}`;
+            }
+        }, 1000);
+
+        function takeDamage(amount) {
+            if (!canTakeDamage) return;
+            health -= amount;
+            hpBar.style.width = (Math.max(0, health) / 45) * 100 + "%";
+            hpText.innerText = `${Math.max(0, health)} / 45`;
+            canTakeDamage = false;
+            soul.classList.add('damaged');
+            setTimeout(() => { canTakeDamage = true; soul.classList.remove('damaged'); }, 300);
+        }
+
+        // Ataque 1: Huesos por el suelo
+        function spawnBone() {
+            const bone = document.createElement('div');
+            bone.className = 'bone';
+            bone.style.left = '450px';
+            bone.style.height = (Math.random() * 40 + 30) + 'px'; 
+            board.appendChild(bone);
+            bones.push({ element: bone, x: 450 });
+        }
+
+        // Ataque 2: Gaster Blasters
+        function spawnBlaster() {
+            const blaster = document.createElement('div');
+            blaster.className = 'blaster';
+            const bX = Math.random() > 0.5 ? -60 : 400;
+            const bY = Math.random() > 0.5 ? -60 : 400;
+            blaster.style.left = bX + 'px';
+            blaster.style.top = bY + 'px';
+            board.appendChild(blaster);
+
+            const angle = Math.atan2((posY + 8) - (bY + 30), (posX + 8) - (bX + 30)) * 180 / Math.PI;
+            blaster.style.transform = `rotate(${angle + 270}deg)`;
+
+            setTimeout(() => {
+                const beam = document.createElement('div');
+                beam.className = 'beam';
+                beam.style.left = (bX + 30) + 'px';
+                beam.style.top = (bY + 30) + 'px';
+                beam.style.transform = `rotate(${angle}deg)`;
+                board.appendChild(beam);
+
+                const beamData = { x: bX + 30, y: bY + 30, angle: angle };
+                activeBeams.push(beamData);
+
+                setTimeout(() => {
+                    activeBeams = activeBeams.filter(b => b !== beamData);
+                    beam.remove();
+                    blaster.remove();
+                }, 500);
+            }, 800);
+        }
+
+        // Generadores aleatorios
+        setInterval(spawnBone, 1600);
+        setInterval(spawnBlaster, 2500);
+
+        function isHittingBeam(px, py, x1, y1, ang) {
+            const angleRad = ang * Math.PI / 180;
+            const vx = Math.cos(angleRad), vy = Math.sin(angleRad);
+            const dx = px - x1, dy = py - y1;
+            const dot = dx * vx + dy * vy;
+            if (dot < 0 || dot > 800) return false;
+            const dist = Math.abs(dx * vy - dy * vx);
+            return dist < 14; 
+        }
+
+        function update() {
+            if (health <= 0) {
+                alert(`¡FIN DEL JUEGO!\nTu puntuación: ${score}`);
+                location.reload();
+                return;
+            }
+
+            // Movimiento Horizontal
+            if (keys['ArrowLeft'] && posX > 0) posX -= speed;
+            if (keys['ArrowRight'] && posX < board.clientWidth - 16) posX += speed;
+
+            // Física de Gravedad (Magia Azul)
+            velY += gravity;
+            posY += velY;
+
+            const floor = board.clientHeight - 16;
+            if (posY >= floor) {
+                posY = floor; velY = 0;
+                if (keys['ArrowUp']) velY = jumpPower;
+            } else if (posY < 0) {
+                posY = 0; velY = 0;
+            }
+
+            soul.style.left = posX + 'px';
+            soul.style.top = posY + 'px';
+
+            // Colisión con Huesos
+            bones.forEach((b, i) => {
+                b.x -= 3.5;
+                b.element.style.left = b.x + 'px';
+                const sR = soul.getBoundingClientRect();
+                const bR = b.element.getBoundingClientRect();
+                if (sR.left < bR.right && sR.right > bR.left && sR.top < bR.bottom && sR.bottom > bR.top) {
+                    takeDamage(5);
+                }
+                if (b.x < -20) { b.element.remove(); bones.splice(i, 1); }
+            });
+
+            // Colisión con Blasters
+            activeBeams.forEach(b => {
+                if (isHittingBeam(posX + 8, posY + 8, b.x, b.y, b.angle)) {
+                    takeDamage(2);
+                }
+            });
+
+            requestAnimationFrame(update);
+        }
+
+        update();
+    </script>
+</body>
+</html>
